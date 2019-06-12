@@ -9,43 +9,42 @@ import           Data.Aeson.Types    (pairs)
 import           GHC.Generics        (Generic)
 import qualified HardCoded           as HC
 import           Network.HTTP.Client (Request, RequestBody (RequestBodyLBS),
-                                      method, parseRequest, requestBody,
-                                      requestHeaders)
+                                      parseRequest, requestBody, requestHeaders,
+                                      setQueryString)
 import           Network.HTTP.Types  (RequestHeaders)
-import           WebRequest
+import           WebRequest          (printResponse, secureRequest)
 
 {- API Calls -}
 
--- | Send a message over Discord
 postMessage :: ToJSON j => j -> String -> IO ()
-postMessage content targetID
-  =   postMsgPayload content <$> parseRequest (msgEndpoint targetID)
+postMessage content = sendRequest (\p -> p {requestBody = postPayload})
+  where postPayload = reqBody (PostMsg content)
+
+getMessages :: String -> IO ()
+getMessages = sendRequest (setQueryString [("around", Just "587935253830565898")])
+
+sendRequest :: (Request -> Request) -> String -> IO ()
+sendRequest payload targetID
+  =   payload . (\x -> x {requestHeaders = defHeader})
+  <$> parseRequest (msgEndpoint targetID)
   >>= discordRequest
 
--- | Get messages
+testChanID :: String
+testChanID = "586730982476873760"
 
 {- Request Builders -}
-
 -- | Send and print a request via the Discord API
 discordRequest :: Request -> IO ()
 discordRequest = secureRequest >=> printResponse id
 
-data MessageRequest msg = GetMsg msg | PostMsg msg
+data MessageRequest msg = PostMsg msg | GetMsg msg
   deriving Generic
 
 instance ToJSON m => ToJSON (MessageRequest m) where
   toEncoding (PostMsg m) = pairs ("content" .= m <> "tts" .= False)
-  toEncoding _           = undefined
-
-{- Payloads -}
-
-postMsgPayload :: ToJSON j => j -> Request -> Request
-postMsgPayload content req = req {method         = "POST"                   ,
-                                  requestBody    = reqBody (PostMsg content),
-                                  requestHeaders = defHeader                 }
+  toEncoding (GetMsg _)  = undefined
 
 {- Encoders -}
-
 reqBody :: ToJSON j => MessageRequest j -> RequestBody
 reqBody =  RequestBodyLBS . encode
 
@@ -57,6 +56,5 @@ defHeader = [("User-Agent"   , "DiscordBot (N/A, 0.1)"),
              ("Authorization", HC.botToken)            ,
              ("Content-Type" , "application/json")     ]
 
-
 msgEndpoint :: String -> String
-msgEndpoint chanID = HC.discordURL ++ "channels/" ++ chanID ++ "/messages/"
+msgEndpoint chanID = HC.discordURL ++ "channels/" ++ chanID ++ "/messages"

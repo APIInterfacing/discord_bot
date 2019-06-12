@@ -15,29 +15,26 @@ import           Data.IORef
 import           Data.Text                  (Text)
 -- | TODO : Implement validations
 -- import qualified Data.Validation            as Val
--- import qualified DiscordBindings            as DAPI (postMessage)
+import qualified DiscordBindings            as DAPI (postMessage, getMessages)
 import           GHC.Generics               (Generic)
-import qualified HardCoded                  as HC
 import           Network.WebSockets         (Connection)
 import           WebRequest                 (connectToGateway, wsClose,
                                              wsIncoming, wsSendTextMsg)
 
 -- ^ NOTE : ASSUMING EVERYTHING IS SUCCESSFUL FOR NOW
-
-{- Bot -}
 runBot :: IO ()
 runBot = connectToGateway bot
 
+
+{- Bot -}
 bot :: Connection -> IO ()
 bot conn =  newIORef True   >>= initBot conn
          >> disconnect conn >>= print
 
-minute :: Int
-minute =  60000000
 
 closeInMinute :: Connection -> IORef Bool -> IO ()
 closeInMinute conn isAlive
-  =  threadDelay minute >> disconnect conn >> writeIORef isAlive False
+  =  threadDelay (5 * second) >> disconnect conn >> writeIORef isAlive False
   >> print ("Disconnecting" :: Text)
 
 
@@ -52,10 +49,13 @@ getHeartbeat h = maybe (-1) hasPulse (pulse <$> decode' h)
 -- | Init bot connects, identifies with the server, and starts sending a
 -- | heartbeat (converted from milliseconds to microseconds)
 initBot :: Connection -> IORef Bool -> IO ()
-initBot conn isAlive =  wsIncoming conn >>= startHeart >> identify conn
-                     >> closeInMinute conn isAlive
+initBot conn isAlive
+  = wsIncoming conn >>= startHeart >> identify conn
+  >> DAPI.getMessages "586730982476873760"
+  >> closeInMinute conn isAlive
   where startHeart h =  forkIO (heartbeat conn (getHeartbeat h * 1000) isAlive)
 
+-- | TODO : Convert to use direct encoding
 identify :: Connection -> IO ()
 identify conn = wsSendTextMsg conn (gatewayPayload Identify idProperties)
   where idProperties = object ["os"      .= ("Linux" :: Text),
@@ -68,9 +68,12 @@ heartbeat conn interval isAlive
   where stillAlive h =  when h (sendGateMsg conn Heartbeat ("" :: Text)
                                 >> heartbeat conn interval isAlive    )
 
+{- Time -}
 second :: Int
 second = 1000000
 
+minute :: Int
+minute =  60000000
 
 sendGateMsg :: ToJSON d => Connection -> Opcode -> d -> IO ()
 sendGateMsg gate opcode eventData =
@@ -79,7 +82,7 @@ sendGateMsg gate opcode eventData =
 disconnect :: Connection -> IO ()
 disconnect conn = wsClose conn (gatewayPayload Heartbeat ("" :: Text))
 
-{- GATEWAY PAYLOAD -}
+{- Gateway Payload -}
 
 data GatewayPayload d =
   GatewayPayload { -- | Opcode
@@ -105,7 +108,7 @@ gatewayPayload opcode eventData =
   encode GatewayPayload {op = opMap opcode, d = eventData,
                          s  = Nothing,      t = Nothing   }
 
-{- OPCODES -}
+{- Opcodes -}
 
 opMap :: Opcode -> Int
 opMap Dispatch       =  0
