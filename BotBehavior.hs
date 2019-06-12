@@ -38,7 +38,7 @@ minute =  60000000
 closeInMinute :: Connection -> IORef Bool -> IO ()
 closeInMinute conn isAlive
   =  threadDelay minute >> disconnect conn >> writeIORef isAlive False
-  >> print ("Ya' donezo, kid!" :: Text)
+  >> print ("Disconnecting" :: Text)
 
 
 {- Response Parsers -}
